@@ -593,6 +593,11 @@ bool MyMesh::filterRecvFloodPacket(mesh::Packet* packet) {
   return false;  // never filter Ã¢â‚¬â€ let normal processing continue
 }
 
+// upstream v1.15: companion only repeats/forwards packets when client-repeat mode is enabled
+bool MyMesh::allowPacketForward(const mesh::Packet* packet) {
+  return _prefs.client_repeat != 0;
+}
+
 void MyMesh::sendFloodScoped(const TransportKey& scope, mesh::Packet* pkt, uint32_t delay_millis) {
   if (scope.isNull()) {
     sendFlood(pkt, delay_millis, getPathHashSize());

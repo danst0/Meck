@@ -31,7 +31,7 @@ void HeltecV4Board::begin() {
       long wakeup_source = esp_sleep_get_ext1_wakeup_status();
       if (wakeup_source & (1 << P_LORA_DIO_1)) {  // received a LoRa packet (while in deep sleep)
         startup_reason = BD_STARTUP_RX_PACKET;
-      }
+    }
 
       rtc_gpio_hold_dis((gpio_num_t)P_LORA_NSS);
       rtc_gpio_deinit((gpio_num_t)P_LORA_DIO_1);
@@ -40,12 +40,12 @@ void HeltecV4Board::begin() {
 
   void HeltecV4Board::onBeforeTransmit(void) {
     digitalWrite(P_LORA_TX_LED, HIGH);   // turn TX LED on
-    digitalWrite(P_LORA_PA_TX_EN,HIGH);
+    loRaFEMControl.setTxModeEnable();
   }
 
   void HeltecV4Board::onAfterTransmit(void) {
     digitalWrite(P_LORA_TX_LED, LOW);   // turn TX LED off
-    digitalWrite(P_LORA_PA_TX_EN,LOW);
+    loRaFEMControl.setRxModeEnable();
   }
 
   void HeltecV4Board::enterDeepSleep(uint32_t secs, int pin_wake_btn) {

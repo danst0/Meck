@@ -199,6 +199,7 @@ protected:
   uint8_t getExtraAckTransmitCount() const override;
   uint8_t getAutoAddMaxHops() const override;
   bool filterRecvFloodPacket(mesh::Packet* packet) override;
+  bool allowPacketForward(const mesh::Packet* packet) override;  // upstream v1.15: client-repeat gating
 
   uint8_t getPathHashSize() const override { return _prefs.path_hash_mode + 1; }
   void sendFloodScoped(const ContactInfo& recipient, mesh::Packet* pkt, uint32_t delay_millis=0) override;

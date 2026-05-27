@@ -48,6 +48,8 @@ struct NodePrefs {  // persisted to file
   uint8_t ui_font_style;          // 0=Classic (FreeSans), 1=Noto Sans, 2=Montserrat
   uint8_t tx_fail_reset_threshold;  // 0=disabled, 1-10, default 3
   uint8_t rx_fail_reboot_threshold; // 0=disabled, 1-10, default 3
+  uint8_t rx_boosted_gain;          // upstream v1.15: SX126x RX boosted gain (0=power saving, 1=boosted)
+  uint8_t client_repeat;            // upstream v1.15: client-repeat mode (0=off)
 
   // --- Region scope (MeshCore v1.15+ compatibility) ---
   // Device-wide default region for flood messages.

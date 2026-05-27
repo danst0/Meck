@@ -309,7 +309,7 @@ size_t RegionMap::exportTo(char *dest, size_t max_len) const {
   if (!dest || max_len == 0) return 0;
 
   BufStream bs(dest, max_len);
-  exportTo(bs);              // reuse existing logic
+  exportTo(bs);              // ← reuse existing logic
   return bs.length();
 }
 
@@ -323,7 +323,7 @@ int RegionMap::exportNamesTo(char *dest, int max_len, uint8_t mask, bool invert)
     *dp++ = ',';
   }
 
-  for (int i = 0; i < num_regions; i++) {
+    for (int i = 0; i < num_regions; i++) {
     auto region = &regions[i];
     
     // Check if region matches the filter criteria

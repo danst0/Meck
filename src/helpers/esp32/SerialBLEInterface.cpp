@@ -1,6 +1,7 @@
 #include "SerialBLEInterface.h"
 #include "esp_bt.h"
 #include "esp_gap_ble_api.h"
+#include "esp_mac.h"
 
 // See the following for generating UUIDs:
 // https://www.uuidgenerator.net/

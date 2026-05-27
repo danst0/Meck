@@ -100,7 +100,7 @@ ContactInfo* BaseChatMesh::allocateContactSlot() {
 void BaseChatMesh::populateContactFromAdvert(ContactInfo& ci, const mesh::Identity& id, const AdvertDataParser& parser, uint32_t timestamp) {
   memset(&ci, 0, sizeof(ci));
   ci.id = id;
-  ci.out_path_len = OUT_PATH_UNKNOWN;  // initially out_path is unknown
+  ci.out_path_len = OUT_PATH_UNKNOWN;
   StrHelper::strncpy(ci.name, parser.getName(), sizeof(ci.name));
   ci.type = parser.getType();
   if (parser.hasLatLon()) {
@@ -139,11 +139,19 @@ void BaseChatMesh::onAdvertRecv(mesh::Packet* packet, const mesh::Identity& id, 
     plen = packet->writeTo(temp_buf);
     packet->header = save;
   }
-  putBlobByKey(id.pub_key, PUB_KEY_SIZE, temp_buf, plen);
 
   bool is_new = false; // true = not in contacts[], false = exists in contacts[]
   if (from == NULL) {
     if (!shouldAutoAddContactType(parser.getType())) {
+      ContactInfo ci;
+      populateContactFromAdvert(ci, id, parser, timestamp);
+      onDiscoveredContact(ci, true, packet->path_len, packet->path);       // let UI know
+      return;
+    }
+
+    // check hop limit for new contacts (0 = no limit, 1 = direct (0 hops), N = up to N-1 hops)
+    uint8_t max_hops = getAutoAddMaxHops();
+    if (max_hops > 0 && packet->getPathHashCount() >= max_hops) {
       ContactInfo ci;
       populateContactFromAdvert(ci, id, parser, timestamp);
       onDiscoveredContact(ci, true, packet->path_len, packet->path);       // let UI know
@@ -165,6 +173,7 @@ void BaseChatMesh::onAdvertRecv(mesh::Packet* packet, const mesh::Identity& id, 
     from->shared_secret_valid = false;
   }
   // update
+    putBlobByKey(id.pub_key, PUB_KEY_SIZE, temp_buf, plen);
     StrHelper::strncpy(from->name, parser.getName(), sizeof(from->name));
     from->type = parser.getType();
     if (parser.hasLatLon()) {
@@ -303,8 +312,7 @@ bool BaseChatMesh::onPeerPathRecv(mesh::Packet* packet, int sender_idx, const ui
 bool BaseChatMesh::onContactPathRecv(ContactInfo& from, uint8_t* in_path, uint8_t in_path_len, uint8_t* out_path, uint8_t out_path_len, uint8_t extra_type, uint8_t* extra, uint8_t extra_len) {
   // NOTE: default impl, we just replace the current 'out_path' regardless, whenever sender sends us a new out_path.
   // FUTURE: could store multiple out_paths per contact, and try to find which is the 'best'(?)
-  from.out_path_len = out_path_len;
-  mesh::Packet::copyPath(from.out_path, out_path, out_path_len);  // store a copy of path, for sendDirect()
+  from.out_path_len = mesh::Packet::copyPath(from.out_path, out_path, out_path_len);  // store a copy of path, for sendDirect()
   from.lastmod = getRTCClock()->getCurrentTime();
 
   onContactPathUpdated(from);
@@ -353,8 +361,18 @@ int BaseChatMesh::searchChannelsByHash(const uint8_t* hash, mesh::GroupChannel d
 #endif
 
 void BaseChatMesh::onGroupDataRecv(mesh::Packet* packet, uint8_t type, const mesh::GroupChannel& channel, uint8_t* data, size_t len) {
-  uint8_t txt_type = data[4];
-  if (type == PAYLOAD_TYPE_GRP_TXT && len > 5 && (txt_type >> 2) == 0) {  // 0 = plain text msg
+  if (type == PAYLOAD_TYPE_GRP_TXT) {
+    if (len < 5) {
+      MESH_DEBUG_PRINTLN("onGroupDataRecv: dropping short group text payload len=%d", (uint32_t)len);
+      return;
+    }
+
+    uint8_t txt_type = data[4];
+    if ((txt_type >> 2) != 0) {
+      MESH_DEBUG_PRINTLN("onGroupDataRecv: dropping unsupported group text type=%d", (uint32_t)txt_type);
+      return;
+    }
+
     uint32_t timestamp;
     memcpy(&timestamp, data, 4);
 
@@ -363,6 +381,23 @@ void BaseChatMesh::onGroupDataRecv(mesh::Packet* packet, uint8_t type, const mes
 
     // notify UI  of this new message
     onChannelMessageRecv(channel, packet, timestamp, (const char *) &data[5]);  // let UI know
+  } else if (type == PAYLOAD_TYPE_GRP_DATA) {
+    if (len < 3) {
+      MESH_DEBUG_PRINTLN("onGroupDataRecv: dropping short group data payload len=%d", (uint32_t)len);
+      return;
+    }
+
+    uint16_t data_type = ((uint16_t)data[0]) | (((uint16_t)data[1]) << 8);
+    uint8_t data_len = data[2];
+    size_t available_len = len - 3;
+
+    if (data_len > available_len) {
+      MESH_DEBUG_PRINTLN("onGroupDataRecv: dropping malformed group data type=%d len=%d available=%d",
+                         (uint32_t)data_type, (uint32_t)data_len, (uint32_t)available_len);
+      return;
+    }
+
+    onChannelDataRecv(channel, packet, data_type, &data[3], data_len);
   }
 }
 
@@ -452,6 +487,37 @@ bool BaseChatMesh::sendGroupMessage(uint32_t timestamp, mesh::GroupChannel& chan
     return true;
   }
   return false;
+}
+
+bool BaseChatMesh::sendGroupData(mesh::GroupChannel& channel, uint8_t* path, uint8_t path_len, uint16_t data_type, const uint8_t* data, int data_len) {
+  if (data_len < 0) {
+    MESH_DEBUG_PRINTLN("sendGroupData: invalid negative data_len=%d", data_len);
+    return false;
+  }
+  if (data_len > MAX_GROUP_DATA_LENGTH) {
+    MESH_DEBUG_PRINTLN("sendGroupData: data_len=%d exceeds max=%d", data_len, MAX_GROUP_DATA_LENGTH);
+    return false;
+  }
+
+  uint8_t temp[3 + MAX_GROUP_DATA_LENGTH];
+  temp[0] = (uint8_t)(data_type & 0xFF);
+  temp[1] = (uint8_t)(data_type >> 8);
+  temp[2] = (uint8_t)data_len;
+  if (data_len > 0) memcpy(&temp[3], data, data_len);
+
+  auto pkt = createGroupDatagram(PAYLOAD_TYPE_GRP_DATA, channel, temp, 3 + data_len);
+  if (pkt == NULL) {
+    MESH_DEBUG_PRINTLN("sendGroupData: unable to create group datagram, data_len=%d", data_len);
+    return false;
+  }
+
+  if (path_len == OUT_PATH_UNKNOWN) {
+    sendFloodScoped(channel, pkt);
+  } else {
+    sendDirect(pkt, path, path_len);
+  }
+
+  return true;
 }
 
 bool BaseChatMesh::shareContactZeroHop(const ContactInfo& contact) {

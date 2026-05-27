@@ -4,6 +4,7 @@
 #include <helpers/IdentityStore.h>
 #include <helpers/SensorManager.h>
 #include <helpers/ClientACL.h>
+#include <helpers/RegionMap.h>
 
 #if defined(WITH_RS232_BRIDGE) || defined(WITH_ESPNOW_BRIDGE)
 #define WITH_BRIDGE
@@ -24,7 +25,7 @@ struct NodePrefs { // persisted to file
   double node_lat, node_lon;
   char password[16];
   float freq;
-  uint8_t tx_power_dbm;
+  int8_t tx_power_dbm;
   uint8_t disable_fwd;
   uint8_t advert_interval;       // minutes / 2
   uint8_t flood_advert_interval; // hours
@@ -57,9 +58,9 @@ struct NodePrefs { // persisted to file
   uint32_t discovery_mod_timestamp;
   float adc_multiplier;
   char owner_info[120];
-  // Multi-byte path hash support (added for Meck remote repeater)
-  uint8_t path_hash_mode;    // 0=1-byte (legacy), 1=2-byte, 2=3-byte path hashes
-  uint8_t loop_detect;       // 0=off, 1=minimal, 2=moderate, 3=strict (MeshCore v1.14+)
+  uint8_t rx_boosted_gain; // power settings
+  uint8_t path_hash_mode;   // which path mode to use when sending
+  uint8_t loop_detect;
 };
 
 class CommonCLICallbacks {
@@ -69,13 +70,13 @@ public:
   virtual const char* getBuildDate() = 0;
   virtual const char* getRole() = 0;
   virtual bool formatFileSystem() = 0;
-  virtual void sendSelfAdvertisement(int delay_millis) = 0;
+  virtual void sendSelfAdvertisement(int delay_millis, bool flood) = 0;
   virtual void updateAdvertTimer() = 0;
   virtual void updateFloodAdvertTimer() = 0;
   virtual void setLoggingOn(bool enable) = 0;
   virtual void eraseLogFile() = 0;
   virtual void dumpLogFile() = 0;
-  virtual void setTxPower(uint8_t power_dbm) = 0;
+  virtual void setTxPower(int8_t power_dbm) = 0;
   virtual void formatNeighborsReply(char *reply) = 0;
   virtual void removeNeighbor(const uint8_t* pubkey, int key_len) {
     // no op by default
@@ -88,11 +89,25 @@ public:
   virtual void clearStats() = 0;
   virtual void applyTempRadioParams(float freq, float bw, uint8_t sf, uint8_t cr, int timeout_mins) = 0;
 
+  virtual void startRegionsLoad() {
+    // no op by default
+  }
+  virtual bool saveRegions() {
+    return false;
+  }
+  virtual void onDefaultRegionChanged(const RegionEntry* r) {
+    // no op by default
+  }
+
   virtual void setBridgeState(bool enable) {
     // no op by default
   };
 
   virtual void restartBridge() {
+    // no op by default
+  };
+
+  virtual void setRxBoostedGain(bool enable) {
     // no op by default
   };
 };
@@ -103,6 +118,7 @@ class CommonCLI {
   CommonCLICallbacks* _callbacks;
   mesh::MainBoard* _board;
   SensorManager* _sensors;
+  RegionMap* _region_map;
   ClientACL* _acl;
   char tmp[PRV_KEY_SIZE*2 + 4];
 
@@ -110,12 +126,16 @@ class CommonCLI {
   void savePrefs();
   void loadPrefsInt(FILESYSTEM* _fs, const char* filename);
 
+  void handleRegionCmd(char* command, char* reply);
+  void handleGetCmd(uint32_t sender_timestamp, char* command, char* reply);
+  void handleSetCmd(uint32_t sender_timestamp, char* command, char* reply);
+
 public:
-  CommonCLI(mesh::MainBoard& board, mesh::RTCClock& rtc, SensorManager& sensors, ClientACL& acl, NodePrefs* prefs, CommonCLICallbacks* callbacks)
-      : _board(&board), _rtc(&rtc), _sensors(&sensors), _acl(&acl), _prefs(prefs), _callbacks(callbacks) { }
+  CommonCLI(mesh::MainBoard& board, mesh::RTCClock& rtc, SensorManager& sensors, RegionMap& region_map, ClientACL& acl, NodePrefs* prefs, CommonCLICallbacks* callbacks)
+      : _board(&board), _rtc(&rtc), _sensors(&sensors), _region_map(&region_map), _acl(&acl), _prefs(prefs), _callbacks(callbacks) { }
 
   void loadPrefs(FILESYSTEM* _fs);
   void savePrefs(FILESYSTEM* _fs);
-  void handleCommand(uint32_t sender_timestamp, const char* command, char* reply);
+  void handleCommand(uint32_t sender_timestamp, char* command, char* reply);
   uint8_t buildAdvertData(uint8_t node_type, uint8_t* app_data);
 };

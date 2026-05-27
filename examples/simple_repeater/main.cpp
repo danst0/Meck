@@ -170,7 +170,7 @@ void setup() {
 #endif
 
   // send out initial Advertisement to the mesh
-  the_mesh.sendSelfAdvertisement(16000);
+  the_mesh.sendSelfAdvertisement(16000, true);
 }
 
 void loop() {

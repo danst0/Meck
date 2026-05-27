@@ -298,6 +298,14 @@ public:
 #endif
   uint8_t getChannelScreenViewIdx() const;
 
+  bool isBuzzerQuiet() { 
+#ifdef PIN_BUZZER
+    return buzzer.isQuiet();
+#else
+    return true;
+#endif
+  }
+
   void toggleBuzzer();
   bool getGPSState();
   void toggleGPS();

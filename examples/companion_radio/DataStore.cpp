@@ -292,6 +292,15 @@ void DataStore::loadPrefsInt(const char *filename, NodePrefs& _prefs, double& no
     if (file.read((uint8_t *)_prefs.channel_notif, sizeof(_prefs.channel_notif)) != sizeof(_prefs.channel_notif)) {
       memset(_prefs.channel_notif, 0, sizeof(_prefs.channel_notif));  // default: NOTIF_ALL
     }
+    // upstream v1.15 fields — appended at end for backward-compat with older Meck prefs files
+    if (file.read((uint8_t *)&_prefs.rx_boosted_gain, sizeof(_prefs.rx_boosted_gain)) != sizeof(_prefs.rx_boosted_gain)) {
+      _prefs.rx_boosted_gain = 1;  // default: boosted gain on (matches upstream default)
+    }
+    if (file.read((uint8_t *)&_prefs.client_repeat, sizeof(_prefs.client_repeat)) != sizeof(_prefs.client_repeat)) {
+      _prefs.client_repeat = 0;  // default: off
+    }
+    if (_prefs.rx_boosted_gain > 1) _prefs.rx_boosted_gain = 1;
+    if (_prefs.client_repeat > 1) _prefs.client_repeat = 0;
 
     // Clamp to valid ranges
     if (_prefs.dark_mode > 1) _prefs.dark_mode = 0;
@@ -365,6 +374,8 @@ void DataStore::savePrefs(const NodePrefs& _prefs, double node_lat, double node_
     file.write((uint8_t *)_prefs.default_scope_name, sizeof(_prefs.default_scope_name));         // 106
     file.write((uint8_t *)_prefs.default_scope_key, sizeof(_prefs.default_scope_key));           // 137
     file.write((uint8_t *)_prefs.channel_notif, sizeof(_prefs.channel_notif));                   // 153
+    file.write((uint8_t *)&_prefs.rx_boosted_gain, sizeof(_prefs.rx_boosted_gain));              // 174 (upstream v1.15)
+    file.write((uint8_t *)&_prefs.client_repeat, sizeof(_prefs.client_repeat));                  // 175 (upstream v1.15)
 
     file.close();
   }

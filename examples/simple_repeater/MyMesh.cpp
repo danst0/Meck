@@ -901,10 +901,14 @@ bool MyMesh::formatFileSystem() {
 #endif
 }
 
-void MyMesh::sendSelfAdvertisement(int delay_millis) {
+void MyMesh::sendSelfAdvertisement(int delay_millis, bool flood) {
   mesh::Packet *pkt = createSelfAdvert();
   if (pkt) {
-    sendFlood(pkt, (uint32_t)delay_millis, (uint8_t)(_prefs.path_hash_mode + 1));
+    if (flood) {
+      sendFlood(pkt, (uint32_t)delay_millis, (uint8_t)(_prefs.path_hash_mode + 1));
+    } else {
+      sendZeroHop(pkt, (uint32_t)delay_millis);
+    }
   } else {
     MESH_DEBUG_PRINTLN("ERROR: unable to create advertisement packet!");
   }
@@ -942,7 +946,7 @@ void MyMesh::dumpLogFile() {
   }
 }
 
-void MyMesh::setTxPower(uint8_t power_dbm) {
+void MyMesh::setTxPower(int8_t power_dbm) {
   radio_set_tx_power(power_dbm);
 }
 
